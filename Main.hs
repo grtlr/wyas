@@ -1,8 +1,140 @@
 module Main where
+
 import System.Environment
+import Text.ParserCombinators.Parsec hiding (spaces)
+import Control.Monad
+import Numeric (readDec, readOct, readHex, readFloat)
+import Data.Ratio
+import Data.Complex
+
+data LispVal = Atom String
+             | List [LispVal]
+             | DottedList [LispVal] LispVal
+             | Number Integer
+             | String String
+             | Bool Bool
+             | Character Char
+             | Float Double
+             | Ratio Rational
+             | Complex (Complex Double)
+
+symbol :: Parser Char
+symbol = oneOf "!$%|*+-/:<=>?@^_~"
+
+spaces :: Parser ()
+spaces = skipMany1 space
+
+escapedChars :: Parser Char
+escapedChars = do x <- oneOf "\\\"nrt"
+                  return $ case x of
+                             '\\' -> x
+                             '"'  -> x
+                             'n'  -> '\n'
+                             'r'  -> '\r'
+                             't'  -> '\t'
+
+parseString :: Parser LispVal
+parseString = do char '"'
+                 x <- many $ escapedChars <|> noneOf "\"\\"
+                 char '"'
+                 return $ String x
+
+parseBool :: Parser LispVal
+parseBool = do char '#'
+               x <- oneOf "tf"
+               return $ case x of
+                          't' -> Bool True
+                          'f' -> Bool False
+
+parseAtom :: Parser LispVal
+parseAtom = do first <- letter <|> symbol
+               rest <- many (letter <|> digit <|> symbol)
+               let atom = first:rest
+               return $ Atom atom
+
+parseCharacter :: Parser LispVal
+parseCharacter = do try $ string "#\\"
+                    x <- try (string "newline" <|> string "space")
+                        <|> do { x <- anyChar; notFollowedBy alphaNum; return [x] }
+                    return $ Character $ case x of
+                                           "space" -> ' '
+                                           "newline" -> '\n'
+                                           otherwise -> (x !! 0)
+
+parseNumber :: Parser LispVal
+parseNumber = parseDecimal1 <|> parseDecimal2 <|> parseHex <|> parseOct <|> parseBin
+
+parseDecimal1 :: Parser LispVal
+parseDecimal1 = many1 digit >>= return . Number . read
+
+parseDecimal2 :: Parser LispVal
+parseDecimal2 = do try $ string "#d"
+                   x <- many1 digit
+                   (return . Number . read) x
+
+parseHex :: Parser LispVal
+parseHex = do try $ string "#x"
+              x <- many1 hexDigit
+              return $ Number (hex2dig x)
+
+parseOct :: Parser LispVal
+parseOct = do try $ string "#o"
+              x <- many1 octDigit
+              return $ Number (oct2dig x)
+
+parseBin :: Parser LispVal
+parseBin = do try $ string "#b"
+              x <- many1 (oneOf "10")
+              return $ Number (bin2dig x)
+
+--- Helper functions for the conversion
+oct2dig x = fst $ readOct x !! 0
+hex2dig x = fst $ readHex x !! 0
+bin2dig  = bin2dig' 0
+bin2dig' digint "" = digint
+bin2dig' digint (x:xs) = let old = 2 * digint + (if x == '0' then 0 else 1) in
+                         bin2dig' old xs
+
+parseFloat :: Parser LispVal
+parseFloat = do x <- many1 digit
+                char '.'
+                y <- many1 digit
+                return $ Float ( fst . head $ readFloat (x ++ "." ++y))
+
+toDouble :: LispVal -> Double
+toDouble(Float f) = f
+toDouble(Number n) = fromIntegral n
+
+parseComplex :: Parser LispVal
+parseComplex = do x <- (try parseFloat <|> parseDecimal1)
+                  char '+'
+                  y <- (try parseFloat <|> parseDecimal1)
+                  char 'i'
+                  return $ Complex (toDouble x :+ toDouble y)
+
+parseRational :: Parser LispVal
+parseRational = do n <- many1 digit
+                   char '/'
+                   d <- many1 digit
+                   return $ Ratio $ (read n) % (read d)
+
+--- Notice the backtracking since multiple items can start with #.
+parseExpr :: Parser LispVal
+parseExpr = parseAtom
+         <|> parseString
+         <|> try parseFloat
+         <|> try parseComplex
+         <|> try parseRational
+         <|> try parseNumber
+         <|> try parseBool
+         <|> try parseCharacter
+
+readExpr :: String -> String
+readExpr input = case parse parseExpr "lisp" input of
+    Left err -> "No match: " ++ show err
+    Right val -> "Found value"
 
 main :: IO()
 main = do
-    putStrLn "What's your name, what's your number?"
-    name <- getLine
-    putStrLn $ "I would like to get to know you " ++ name ++ "."
+    args <- getArgs
+    putStrLn (readExpr (args !! 0))
