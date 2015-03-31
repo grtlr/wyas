@@ -1,24 +1,18 @@
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
-module Parser where
+module Parser
+    ( readExpr'
+    , readExpr
+    , parseExpr
+    , module Parser.Types
+    ) where
+
+import Parser.Types
+import Parser.Primitives
 
 import Text.ParserCombinators.Parsec hiding (spaces)
-import Numeric (readOct, readHex)
-import Data.Ratio ((%))
-import Data.Complex (Complex (..))
 import Control.Monad (liftM)
-
-data LispVal = Atom String
-             | List [LispVal]
-             | DottedList [LispVal] LispVal
-             | Number Integer
-             | String String
-             | Bool Bool
-             | Character Char
-             | Float Double
-             | Ratio Rational
-             | Complex (Complex Double)
-             deriving (Eq, Show)
+import Data.Vector (fromList)
 
 readExpr' :: String -> String
 readExpr' input = case parse parseExpr "lisp" input of
@@ -27,28 +21,17 @@ readExpr' input = case parse parseExpr "lisp" input of
 
 readExpr :: String -> LispVal
 readExpr input = case parse parseExpr "lisp" input of
-    Left err -> error ("No match: " ++ show err) (Ratio $ 1 % 0)
+    Left err -> error ("No match: " ++ show err) (Character '!')
     Right val -> val
-
-parseBool :: Parser LispVal
-parseBool = do char '#'
-               b <- parseTrue <|> parseFalse
-               return $ Bool b
-               where parseTrue  = char 't' >> return True
-                     parseFalse = char 'f' >> return False
-
-parseAtom :: Parser LispVal
-parseAtom = do first <- letter <|> symbol
-               rest <- many (letter <|> digit <|> symbol)
-               return $ Atom (first:rest)
-
---
--- Parsers
---
 
 parseExpr :: Parser LispVal
 parseExpr = parseAtom
          <|> parseString
+         <|> parseQuoted
+         <|> parseQuasiQuoted
+         <|> parseUnQuote
+         <|> parseAnyList
+         <|> try parseVector
          <|> try parseChar
          <|> try parseComplex
          <|> try parseFloat
@@ -57,119 +40,38 @@ parseExpr = parseAtom
          <|> try parseBool
 
 --
--- Char & String
+-- Lists, dotted lists, quoted datums
 --
 
-parseChar :: Parser LispVal
-parseChar = liftM Character (string "#\\" >> parseChar')
-          where parseWS = (string " " <|> string "space") >> return ' '
-                parseNewline = string "newline" >> return '\n'
-                parseChar' = parseWS <|> parseNewline <|> anyChar
+parseAnyList :: Parser LispVal
+parseAnyList = do
+    char '('
+    optional spaces
+    h <- sepEndBy parseExpr spaces
+    t <- (char '.' >> spaces >> parseExpr) <|> return (Nil ())
+    optional spaces
+    char ')'
+    return $ case t of
+               (Nil ()) -> List h
+               _ -> DottedList h t
 
-parseString :: Parser LispVal
-parseString = do char '"'
-                 x <- many (escapedChars <|> noneOf "\\\"")
-                 char '"'
-                 (return . String) x
+parseQuoted :: Parser LispVal
+parseQuoted = do char '\''
+                 x <- parseExpr
+                 return $ List [Atom "quote", x]
 
---
--- Parsing Integers
---
+parseQuasiQuoted :: Parser LispVal
+parseQuasiQuoted = do char '`'
+                      x <- parseExpr
+                      return $ List [Atom "quasiquote", x]
 
-parseNumber :: Parser LispVal
-parseNumber = parsePlainNumber <|> parseRadixNumber
+parseUnQuote :: Parser LispVal
+parseUnQuote = do char ','
+                  x <- parseExpr
+                  return $ List [Atom "unquote", x]
 
-parsePlainNumber :: Parser LispVal
-parsePlainNumber = liftM (Number . read) (many1 digit)
-
---
--- Radix Numbers
---
-
-parseRadixNumber :: Parser LispVal
-parseRadixNumber = char '#' >>
-                   (
-                        parseDecimal
-                        <|> parseBinary
-                        <|> parseOct
-                        <|> parseHex
-                   )
-
-parseDecimal :: Parser LispVal
-parseDecimal = do char 'd'
-                  n <- many1 digit
-                  (return . Number . read) n
-
-parseBinary :: Parser LispVal
-parseBinary = do char 'b'
-                 n <- many $ oneOf "01"
-                 (return . Number . bin2int) n
-
-parseHex :: Parser LispVal
-parseHex = do char 'x'
-              n <- many $ oneOf "0123456789abcdefABCDEF"
-              return . Number . readWith readHex $ n
-              where readWith f s = fst $ head (f s)
-
-parseOct :: Parser LispVal
-parseOct = do char 'o'
-              n <- many $ oneOf "01234567"
-              return . Number . readWith readOct $ n
-              where readWith f s = fst $ head (f s)
-
---
--- Numeric Tower
---
-
-parseFloat :: Parser LispVal
-parseFloat = do x <- many1 digit
-                char '.'
-                y <- many1 digit
-                return $ Float (read (x ++ "." ++y))
-
-parseRational :: Parser LispVal
-parseRational = do n <- many1 digit
-                   char '/'
-                   d <- many1 digit
-                   return $ Ratio $ read n % read d
-
-parseComplex :: Parser LispVal
-parseComplex = do x <- try parseFloat <|> parsePlainNumber
-                  char '+'
-                  y <- try parseFloat <|> parsePlainNumber
-                  char 'i'
-                  return $ Complex (toDouble x :+ toDouble y)
-
---
--- Helpers
---
-
-escapedChars :: Parser Char
-escapedChars = char '\\' >>
-               (
-                    char '\\' <|> char '"' <|>
-                    parseNewline <|>
-                    parseReturn <|>
-                    parseTab
-               )
-               where parseNewline = char 'n' >> return '\n'
-                     parseReturn  = char 'r' >> return '\r'
-                     parseTab     = char 't' >> return '\t'
-
-symbol :: Parser Char
-symbol = oneOf "!$%|*+-/:<=>?@^_~"
-
-spaces :: Parser ()
-spaces = skipMany1 space
-
-bin2int :: String -> Integer
-bin2int = bin2int' 0
-        where bin2int' digint "" = digint
-              bin2int' digint (x:xs) = let old = 2 * digint + (if x == '0' then 0 else 1)
-                                       in bin2int' old xs
-
--- TODO clean up
-toDouble :: LispVal -> Double
-toDouble (Float f) = f
-toDouble (Number n) = fromIntegral n
-toDouble _ = error "ERROR: not a double"
+parseVector :: Parser LispVal
+parseVector = do string "#("
+                 (List x) <- liftM List $ sepBy parseExpr spaces
+                 char ')'
+                 return . Vector $ fromList x
