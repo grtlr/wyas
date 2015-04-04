@@ -3,6 +3,7 @@
 module Main where
 
 import Parser
+import Evaluator
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -75,11 +76,42 @@ testListParsing = testGroup "list parsing tests"
                         Atom "d"]]
   , testCase "parse vector"
         $ readExpr "#(1 a 3)"
-        @?= Vector (fromList [Number 1, Atom "a", Number 3]) 
+        @?= Vector (fromList [Number 1, Atom "a", Number 3])
+  ]
+
+
+testEvaluation = testGroup "evaluation tests"
+  [ testCase "simple addition"
+        $ (eval . readExpr) "(+ 2 2)"
+        @?= Number 4
+  , testCase "negative number"
+        $ (eval . readExpr) "(+ 2 (-4 1))"
+        @?= Number 2
+  , testCase "nested calls"
+        $ (eval . readExpr) "(+ 2 (- 4 1))"
+        @?= Number 5
+  , testCase "chained calls"
+        $ (eval . readExpr) "(- (+ 4 6 3) 3 5 2)"
+        @?= Number 3
+  , testCase "check symbol?"
+        $ (eval . readExpr) "(symbol? test)"
+        @?= Bool True
+  , testCase "check number?"
+        $ (eval . readExpr) "(number? 3)"
+        @?= Bool True
+  , testCase "check string?"
+        $ (eval . readExpr) "(string? \"test\")"
+        @?= Bool True
+  , testCase "symbol to string"
+        $ (eval . readExpr) "(symbol->string test)"
+        @?= String "test"
   ]
 
 tests :: TestTree
-tests = testGroup "Parser Tests" [testTypeParsing, testListParsing]
+tests = testGroup "Parser Tests" [ testTypeParsing
+                                 , testListParsing
+                                 , testEvaluation
+                                 ]
 
 main = defaultMain tests
 

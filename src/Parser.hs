@@ -21,7 +21,7 @@ readExpr' input = case parse parseExpr "lisp" input of
 
 readExpr :: String -> LispVal
 readExpr input = case parse parseExpr "lisp" input of
-    Left err -> error ("No match: " ++ show err) (Character '!')
+    Left err -> String $ "No match: " ++ show err
     Right val -> val
 
 parseExpr :: Parser LispVal
