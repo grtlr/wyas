@@ -1,25 +1,18 @@
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
-module Parser
-    ( readExpr'
-    , readExpr
+module Wyas.Parser
+    ( readExpr
     , parseExpr
-    , module Parser.Types
     ) where
 
-import Parser.Types
-import Parser.Primitives
-import Error
+import Wyas.Types
+import Wyas.Parser.Primitives
+import Wyas.Error
 
 import Text.ParserCombinators.Parsec hiding (spaces)
 import Control.Monad (liftM)
 import Control.Monad.Error (throwError)
 import Data.Vector (fromList)
-
-readExpr' :: String -> String
-readExpr' input = case parse parseExpr "lisp" input of
-    Left err -> "No match: " ++ show err
-    Right val -> "Found value: " ++ show val
 
 readExpr :: String -> ThrowsError LispVal
 readExpr input = case parse parseExpr "lisp" input of
@@ -77,3 +70,4 @@ parseVector = do string "#("
                  (List x) <- liftM List $ sepBy parseExpr spaces
                  char ')'
                  return . Vector $ fromList x
+

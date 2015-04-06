@@ -1,8 +1,8 @@
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
-module Parser.Primitives where
+module Wyas.Parser.Primitives where
 
-import Parser.Types
+import Wyas.Types
 
 import Text.ParserCombinators.Parsec hiding (spaces)
 import Numeric (readOct, readHex)

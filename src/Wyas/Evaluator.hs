@@ -1,8 +1,10 @@
-module Evaluator where
+module Wyas.Evaluator where
 
-import Parser.Types
+import Wyas.Types
+import Wyas.Error
+
+import Control.Monad (liftM)
 import Control.Monad.Error (throwError)
-import Error
 
 eval :: LispVal -> ThrowsError LispVal
 eval val@(String _) = return val
@@ -35,8 +37,9 @@ primitives = [("+", numericBinop (+)),
               ("string->symbol", unaryOp string2symbol)]
 
 unaryOp :: (LispVal -> LispVal) -> [LispVal] -> ThrowsError LispVal
-unaryOp f []  = throwError $ NumArgs 1 []
-unaryOp f [v] = return $ f v
+unaryOp _ []  = throwError $ NumArgs 1 []
+unaryOp op [v] = return $ op v
+unaryOp _ multiVal = throwError $ NumArgs 1 multiVal
 
 symbolp, numberp, stringp, boolp, listp :: LispVal -> LispVal
 symbolp (Atom _) = Bool True
@@ -58,15 +61,15 @@ string2symbol (String s) = Atom s
 string2symbol _          = Atom ""
 
 numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> ThrowsError LispVal
-numericBinop op []            = throwError $ NumArgs 2 []
-numericBinop op singleVal@[_] = throwError $ NumArgs 2 singleVal
-numericBinop op params        = mapM unpackNum params >>= return . Number . foldl1 op
+numericBinop _ []            = throwError $ NumArgs 2 []
+numericBinop _ singleVal@[_] = throwError $ NumArgs 2 singleVal
+numericBinop op params        = liftM (Number . foldl1 op) (mapM unpackNum params)
 
 unpackNum :: LispVal -> ThrowsError Integer
 unpackNum (Number n) = return n
 unpackNum (String n) = let parsed = reads n in
                            if null parsed
                               then throwError $ TypeMismatch "Number" $ String n
-                              else return $ fst $ parsed !! 0
+                              else return $ fst $ head parsed
 unpackNum (List [n]) = unpackNum n
 unpackNum notNum     = throwError $ TypeMismatch "number" notNum

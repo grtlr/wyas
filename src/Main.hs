@@ -3,11 +3,11 @@ module Main where
 import System.Environment
 import Control.Monad (liftM)
 
-import Parser
-import Evaluator
-import Error
+import Wyas.Parser
+import Wyas.Evaluator
+import Wyas.Error
 
 main :: IO()
 main = do args <- getArgs
-          evaled <- return $ liftM show $ readExpr (args !! 0) >>= eval
+          evaled <- return $ liftM show $ readExpr (head args) >>= eval
           putStrLn $ extractValue $ trapError evaled

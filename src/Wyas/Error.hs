@@ -1,8 +1,9 @@
-module Error where
+module Wyas.Error where
 
-import Control.Monad.Error (Error, throwError, catchError, noMsg, strMsg)
+import Wyas.Types
+
+import Control.Monad.Error (Error, catchError, noMsg, strMsg)
 import Text.ParserCombinators.Parsec.Error (ParseError)
-import Parser.Types
 
 data LispError = NumArgs Integer [LispVal]
                | TypeMismatch String LispVal

@@ -1,4 +1,4 @@
-module Parser.Types where
+module Wyas.Types where
 
 import Data.Complex (Complex)
 import Data.Vector (Vector)
