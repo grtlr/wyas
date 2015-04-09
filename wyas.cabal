@@ -16,7 +16,8 @@ library
                        Wyas.Parser.Primitives,
                        Wyas.Types,
                        Wyas.Evaluator,
-                       Wyas.Error
+                       Wyas.Error,
+                       Wyas.Repl
   build-depends:       base,
                        parsec >=3.1,
                        vector >=0.10,
