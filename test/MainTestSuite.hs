@@ -2,8 +2,10 @@
 
 module Main where
 
-import Parser
-import Evaluator
+import Wyas.Parser
+import Wyas.Evaluator
+import Wyas.Types
+import Wyas.Error
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -13,47 +15,106 @@ import Data.Complex (Complex((:+)))
 import Data.Vector (fromList)
 
 testTypeParsing = testGroup "type parsing tests"
-  [ testCase "parse decimal point number" $ readExpr "3" @?= Number 3
-  , testCase "parse floating point number" $ readExpr "42.0" @?= Float 42.0
-  , testCase "parse rational number" $ readExpr "3/4" @?= (Ratio $ 3 % 4)
-  , testCase "parse complex number (decimal)" $ readExpr "3+1i" @?= (Complex $ 3.0 :+ 1.0)
-  , testCase "parse complex number (floating)" $ readExpr "3.0+1.0i" @?= (Complex $ 3.0 :+ 1.0)
-  , testCase "parse number (binary prefix)" $ readExpr "#b1000" @?= Number 8
-  , testCase "parse number (hex prefix)" $ readExpr "#xFF" @?= Number 255
-  , testCase "parse number (oct prefix)" $ readExpr "#o7" @?= Number 7
-  , testCase "parse char" $ readExpr "#\\a" @?= Character 'a'
-  , testCase "parse space char" $ readExpr "#\\ "  @?= Character ' '
-  , testCase "parse special newline char" $ readExpr "#\\newline" @?= Character '\n'
-  , testCase "parse special space char" $ readExpr "#\\space" @?= Character ' '
-  , testCase "parse string" $ readExpr "\"test 123\"" @?= String "test 123"
-  , testCase "parse escaped quote in string" $ readExpr "\"\\\"\"" @?= String "\""
-  , testCase "parse quote in string" $ readExpr "\"test \\\"123\\\" test\"" @?= String "test \"123\" test"
-  , testCase "parse backslash in string" $ readExpr "\"te\\\\st\"" @?= String "te\\st"
-  , testCase "parse newline in string" $ readExpr "\"te\nst\"" @?= String "te\nst"
-  , testCase "parse atom" $ readExpr "test_func123" @?= Atom "test_func123"
-  , testCase "parse bool (true)" $ readExpr "#t" @?= Bool True
-  , testCase "parse bool (false)" $ readExpr "#f" @?= Bool False
+  [ testCase "parse decimal point number"
+        $ (extractValue . readExpr) "3"
+        @?= Number 3
+
+  , testCase "parse floating point number"
+        $ (extractValue . readExpr) "42.0"
+        @?= Float 42.0
+
+  , testCase "parse rational number"
+        $ (extractValue . readExpr) "3/4"
+        @?= (Ratio $ 3 % 4)
+
+  , testCase "parse complex number (decimal)"
+        $ (extractValue . readExpr) "3+1i"
+        @?= (Complex $ 3.0 :+ 1.0)
+
+  , testCase "parse complex number (floating)"
+        $ (extractValue . readExpr) "3.0+1.0i"
+        @?= (Complex $ 3.0 :+ 1.0)
+
+  , testCase "parse number (binary prefix)"
+        $ (extractValue . readExpr) "#b1000"
+        @?= Number 8
+
+  , testCase "parse number (hex prefix)"
+        $ (extractValue . readExpr) "#xFF"
+        @?= Number 255
+
+  , testCase "parse number (oct prefix)"
+        $ (extractValue . readExpr) "#o7"
+        @?= Number 7
+
+  , testCase "parse char"
+        $ (extractValue . readExpr) "#\\a"
+        @?= Character 'a'
+
+  , testCase "parse space char"
+        $ (extractValue . readExpr) "#\\ "
+        @?= Character ' '
+
+  , testCase "parse special newline char"
+        $ (extractValue . readExpr) "#\\newline"
+        @?= Character '\n'
+
+  , testCase "parse special space char"
+        $ (extractValue . readExpr) "#\\space"
+        @?= Character ' '
+
+  , testCase "parse string"
+        $ (extractValue . readExpr) "\"test 123\""
+        @?= String "test 123"
+
+  , testCase "parse escaped quote in string"
+        $ (extractValue . readExpr) "\"\\\"\""
+        @?= String "\""
+
+  , testCase "parse quote in string"
+        $ (extractValue . readExpr) "\"test \\\"123\\\" test\""
+        @?= String "test \"123\" test"
+
+  , testCase "parse backslash in string"
+        $ (extractValue . readExpr) "\"te\\\\st\""
+        @?= String "te\\st"
+
+  , testCase "parse newline in string"
+        $ (extractValue . readExpr) "\"te\nst\""
+        @?= String "te\nst"
+
+  , testCase "parse atom"
+        $ (extractValue . readExpr) "test_func123"
+        @?= Atom "test_func123"
+
+  , testCase "parse bool (true)"
+        $ (extractValue . readExpr) "#t"
+        @?= Bool True
+
+  , testCase "parse bool (false)"
+        $ (extractValue . readExpr) "#f"
+        @?= Bool False
   ]
 
 testListParsing = testGroup "list parsing tests"
   [ testCase "parse simple list"
-        $ readExpr "(a b)"
+        $ (extractValue . readExpr) "(a b)"
         @?= List [Atom "a", Atom "b"]
 
   , testCase "parse nested list"
-        $ readExpr "(a (b) c)"
+        $ (extractValue . readExpr) "(a (b) c)"
         @?= List [Atom "a",
                   List [Atom "b"],
                   Atom "c"]
 
   , testCase "parse dotted list"
-        $ readExpr "(a (b . c) d)"
+        $ (extractValue . readExpr) "(a (b . c) d)"
         @?= List [Atom "a",
                   DottedList [(Atom "b")] (Atom "c"),
                   Atom "d"]
 
   , testCase "parse quoted dotted"
-        $ readExpr "(a '(b (c . d)) e)"
+        $ (extractValue . readExpr) "(a '(b (c . d)) e)"
         @?= List [Atom "a",
                   List [Atom "quote",
                         List [Atom "b",
@@ -61,13 +122,13 @@ testListParsing = testGroup "list parsing tests"
                   Atom "e"]
 
   , testCase "parse quasiquoted list"
-        $ readExpr "`(a (b c))"
+        $ (extractValue . readExpr) "`(a (b c))"
         @?= List [Atom "quasiquote",
                   List [Atom "a",
                         List [Atom "b", Atom "c"]]]
 
   , testCase "parse quasiquoted list (unquote)"
-        $ readExpr "`(a ,(b c) d)"
+        $ (extractValue . readExpr) "`(a ,(b c) d)"
         @?= List [Atom "quasiquote",
                   List [Atom "a",
                         List [Atom "unquote",
@@ -75,42 +136,64 @@ testListParsing = testGroup "list parsing tests"
                                     Atom "c"]],
                         Atom "d"]]
   , testCase "parse vector"
-        $ readExpr "#(1 a 3)"
+        $ (extractValue . readExpr) "#(1 a 3)"
         @?= Vector (fromList [Number 1, Atom "a", Number 3])
   ]
 
 
 testEvaluation = testGroup "evaluation tests"
   [ testCase "simple addition"
-        $ (eval . readExpr) "(+ 2 2)"
+        $ extractValue (readExpr "(+ 2 2)" >>= eval)
         @?= Number 4
   , testCase "negative number"
-        $ (eval . readExpr) "(+ 2 (-4 1))"
+        $ extractValue (readExpr "(+ 2 (-4 1))" >>= eval)
         @?= Number 2
   , testCase "nested calls"
-        $ (eval . readExpr) "(+ 2 (- 4 1))"
+        $ extractValue (readExpr "(+ 2 (- 4 1))" >>= eval)
         @?= Number 5
   , testCase "chained calls"
-        $ (eval . readExpr) "(- (+ 4 6 3) 3 5 2)"
+        $ extractValue (readExpr "(- (+ 4 6 3) 3 5 2)" >>= eval)
         @?= Number 3
   , testCase "check symbol?"
-        $ (eval . readExpr) "(symbol? test)"
+        $ extractValue (readExpr "(symbol? test)" >>= eval)
         @?= Bool True
   , testCase "check number?"
-        $ (eval . readExpr) "(number? 3)"
+        $ extractValue (readExpr "(number? 3)" >>= eval)
         @?= Bool True
   , testCase "check string?"
-        $ (eval . readExpr) "(string? \"test\")"
+        $ extractValue (readExpr "(string? \"test\")" >>= eval)
         @?= Bool True
   , testCase "symbol to string"
-        $ (eval . readExpr) "(symbol->string test)"
+        $ extractValue (readExpr "(symbol->string test)" >>= eval)
         @?= String "test"
+  ]
+
+testBinop = testGroup "evaluate binops"
+  [ testCase "less than (numbers)"
+        $ extractValue (readExpr "(< 2 3)" >>= eval)
+        @?= Bool True
+  , testCase "greater than (numbers)"
+        $ extractValue (readExpr "(> 2 3)" >>= eval)
+        @?= Bool False
+  , testCase "greater or equal than (numbers)"
+        $ extractValue (readExpr "(>= 3 3)" >>= eval)
+        @?= Bool True
+  , testCase "string equality"
+        $ extractValue (readExpr "(string=? \"test\" \"test\")" >>= eval)
+        @?= Bool True
+  , testCase "less than (strings)"
+        $ extractValue (readExpr "(string<? \"abc\" \"bba\")" >>= eval)
+        @?= Bool True
+  , testCase "equal on lists"
+        $ extractValue (readExpr "(equal? \'(1 \"2\") \'(1 2))" >>= eval)
+        @?= Bool True
   ]
 
 tests :: TestTree
 tests = testGroup "Parser Tests" [ testTypeParsing
                                  , testListParsing
                                  , testEvaluation
+                                 , testBinop
                                  ]
 
 main = defaultMain tests
